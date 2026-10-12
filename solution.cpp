@@ -16,7 +16,9 @@ struct MinHeap {
         arr[++size] = x;
         int i = size;
         while (i > 1 && arr[i] < arr[i / 2]) {
-            swap(arr[i], arr[i / 2]);
+            int temp = arr[i];
+            arr[i] = arr[i / 2];
+            arr[i / 2] = temp;
             i /= 2;
         }
     }
@@ -34,7 +36,9 @@ struct MinHeap {
                 child++;
             }
             if (arr[i] <= arr[child]) break;
-            swap(arr[i], arr[child]);
+            int temp = arr[i];
+            arr[i] = arr[child];
+            arr[child] = temp;
             i = child;
         }
     }
@@ -55,7 +59,9 @@ struct MaxHeap {
         arr[++size] = x;
         int i = size;
         while (i > 1 && arr[i] > arr[i / 2]) {
-            swap(arr[i], arr[i / 2]);
+            int temp = arr[i];
+            arr[i] = arr[i / 2];
+            arr[i / 2] = temp;
             i /= 2;
         }
     }
@@ -73,7 +79,9 @@ struct MaxHeap {
                 child++;
             }
             if (arr[i] >= arr[child]) break;
-            swap(arr[i], arr[child]);
+            int temp = arr[i];
+            arr[i] = arr[child];
+            arr[child] = temp;
             i = child;
         }
     }
@@ -93,34 +101,30 @@ private:
     // Max-heap for requests below current floor  
     MaxHeap down_requests;
     
-    // Track active requests using simple array (since floor range is large, we'll use a hash-like approach)
-    int active_floors[MAX_N + 5];
-    int active_count;
+    // Track active requests - since we need to handle up to 5e5 operations
+    // and floor values can be up to 1e9, we'll use a simple approach
+    // with two arrays to store all requests and mark them as active/inactive
+    int all_requests[MAX_N + 5];
+    int request_count;
+    bool request_active[MAX_N + 5];
     
-    // Simple hash function for floor values
-    int hash_floor(int floor) {
-        return (floor % MAX_N + MAX_N) % MAX_N;
-    }
-    
-    // Check if a floor is active
+    // Find if a request is still active
     bool is_active(int floor) {
-        int h = hash_floor(floor);
-        return active_floors[h] == floor;
+        for (int i = 0; i < request_count; i++) {
+            if (all_requests[i] == floor && request_active[i]) {
+                return true;
+            }
+        }
+        return false;
     }
     
-    // Mark floor as active
-    void set_active(int floor) {
-        int h = hash_floor(floor);
-        active_floors[h] = floor;
-        active_count++;
-    }
-    
-    // Mark floor as inactive
+    // Mark request as inactive
     void set_inactive(int floor) {
-        int h = hash_floor(floor);
-        if (active_floors[h] == floor) {
-            active_floors[h] = 0;
-            active_count--;
+        for (int i = 0; i < request_count; i++) {
+            if (all_requests[i] == floor && request_active[i]) {
+                request_active[i] = false;
+                break;
+            }
         }
     }
     
@@ -137,15 +141,27 @@ private:
         }
     }
     
+    // Count active requests
+    int count_active() {
+        int count = 0;
+        for (int i = 0; i < request_count; i++) {
+            if (request_active[i]) count++;
+        }
+        return count;
+    }
+    
 public:
-    ElevatorSystem() : current_floor(0), direction_up(true), active_count(0) {
+    ElevatorSystem() : current_floor(0), direction_up(true), request_count(0) {
         for (int i = 0; i < MAX_N + 5; i++) {
-            active_floors[i] = 0;
+            request_active[i] = false;
         }
     }
     
     void add_request(int floor) {
-        set_active(floor);
+        all_requests[request_count] = floor;
+        request_active[request_count] = true;
+        request_count++;
+        
         if (floor > current_floor) {
             up_requests.push(floor);
         } else {
@@ -163,7 +179,7 @@ public:
         cleanup_up_heap();
         cleanup_down_heap();
         
-        if (active_count == 0) {
+        if (count_active() == 0) {
             // No requests, elevator stays still
             return;
         }
