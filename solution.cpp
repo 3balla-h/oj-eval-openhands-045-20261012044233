@@ -1,11 +1,87 @@
 #include <cstdio>
 #include <iostream>
-#include <vector>
-#include <queue>
-#include <unordered_set>
-#include <algorithm>
 
 using namespace std;
+
+const int MAX_N = 500000;
+
+// Custom min-heap implementation
+struct MinHeap {
+    int arr[MAX_N + 5];
+    int size;
+    
+    MinHeap() : size(0) {}
+    
+    void push(int x) {
+        arr[++size] = x;
+        int i = size;
+        while (i > 1 && arr[i] < arr[i / 2]) {
+            swap(arr[i], arr[i / 2]);
+            i /= 2;
+        }
+    }
+    
+    int top() {
+        return arr[1];
+    }
+    
+    void pop() {
+        arr[1] = arr[size--];
+        int i = 1;
+        while (i * 2 <= size) {
+            int child = i * 2;
+            if (child + 1 <= size && arr[child + 1] < arr[child]) {
+                child++;
+            }
+            if (arr[i] <= arr[child]) break;
+            swap(arr[i], arr[child]);
+            i = child;
+        }
+    }
+    
+    bool empty() {
+        return size == 0;
+    }
+};
+
+// Custom max-heap implementation
+struct MaxHeap {
+    int arr[MAX_N + 5];
+    int size;
+    
+    MaxHeap() : size(0) {}
+    
+    void push(int x) {
+        arr[++size] = x;
+        int i = size;
+        while (i > 1 && arr[i] > arr[i / 2]) {
+            swap(arr[i], arr[i / 2]);
+            i /= 2;
+        }
+    }
+    
+    int top() {
+        return arr[1];
+    }
+    
+    void pop() {
+        arr[1] = arr[size--];
+        int i = 1;
+        while (i * 2 <= size) {
+            int child = i * 2;
+            if (child + 1 <= size && arr[child + 1] > arr[child]) {
+                child++;
+            }
+            if (arr[i] >= arr[child]) break;
+            swap(arr[i], arr[child]);
+            i = child;
+        }
+    }
+    
+    bool empty() {
+        return size == 0;
+    }
+};
 
 class ElevatorSystem {
 private:
@@ -13,31 +89,63 @@ private:
     bool direction_up;  // true for up, false for down
     
     // Min-heap for requests above current floor
-    priority_queue<int, vector<int>, greater<int>> up_requests;
+    MinHeap up_requests;
     // Max-heap for requests below current floor  
-    priority_queue<int> down_requests;
+    MaxHeap down_requests;
     
-    // Track active requests for efficient cancellation
-    unordered_set<int> active_requests;
+    // Track active requests using simple array (since floor range is large, we'll use a hash-like approach)
+    int active_floors[MAX_N + 5];
+    int active_count;
     
-    // Clean up invalid elements from heap
-    void cleanup_heap(priority_queue<int, vector<int>, greater<int>>& heap) {
-        while (!heap.empty() && active_requests.find(heap.top()) == active_requests.end()) {
-            heap.pop();
+    // Simple hash function for floor values
+    int hash_floor(int floor) {
+        return (floor % MAX_N + MAX_N) % MAX_N;
+    }
+    
+    // Check if a floor is active
+    bool is_active(int floor) {
+        int h = hash_floor(floor);
+        return active_floors[h] == floor;
+    }
+    
+    // Mark floor as active
+    void set_active(int floor) {
+        int h = hash_floor(floor);
+        active_floors[h] = floor;
+        active_count++;
+    }
+    
+    // Mark floor as inactive
+    void set_inactive(int floor) {
+        int h = hash_floor(floor);
+        if (active_floors[h] == floor) {
+            active_floors[h] = 0;
+            active_count--;
         }
     }
     
-    void cleanup_heap(priority_queue<int>& heap) {
-        while (!heap.empty() && active_requests.find(heap.top()) == active_requests.end()) {
-            heap.pop();
+    // Clean up invalid elements from heap
+    void cleanup_up_heap() {
+        while (!up_requests.empty() && !is_active(up_requests.top())) {
+            up_requests.pop();
+        }
+    }
+    
+    void cleanup_down_heap() {
+        while (!down_requests.empty() && !is_active(down_requests.top())) {
+            down_requests.pop();
         }
     }
     
 public:
-    ElevatorSystem() : current_floor(0), direction_up(true) {}
+    ElevatorSystem() : current_floor(0), direction_up(true), active_count(0) {
+        for (int i = 0; i < MAX_N + 5; i++) {
+            active_floors[i] = 0;
+        }
+    }
     
     void add_request(int floor) {
-        active_requests.insert(floor);
+        set_active(floor);
         if (floor > current_floor) {
             up_requests.push(floor);
         } else {
@@ -46,16 +154,16 @@ public:
     }
     
     void cancel_request(int floor) {
-        active_requests.erase(floor);
+        set_inactive(floor);
         // Lazy deletion - actual cleanup happens during heap operations
     }
     
     void action() {
         // Clean up both heaps first
-        cleanup_heap(up_requests);
-        cleanup_heap(down_requests);
+        cleanup_up_heap();
+        cleanup_down_heap();
         
-        if (active_requests.empty()) {
+        if (active_count == 0) {
             // No requests, elevator stays still
             return;
         }
@@ -65,14 +173,14 @@ public:
             if (!up_requests.empty()) {
                 int target = up_requests.top();
                 up_requests.pop();
-                active_requests.erase(target);
+                set_inactive(target);
                 current_floor = target;
             } else if (!down_requests.empty()) {
                 // No up requests, reverse direction
                 direction_up = false;
                 int target = down_requests.top();
                 down_requests.pop();
-                active_requests.erase(target);
+                set_inactive(target);
                 current_floor = target;
             }
         } else {
@@ -80,14 +188,14 @@ public:
             if (!down_requests.empty()) {
                 int target = down_requests.top();
                 down_requests.pop();
-                active_requests.erase(target);
+                set_inactive(target);
                 current_floor = target;
             } else if (!up_requests.empty()) {
                 // No down requests, reverse direction
                 direction_up = true;
                 int target = up_requests.top();
                 up_requests.pop();
-                active_requests.erase(target);
+                set_inactive(target);
                 current_floor = target;
             }
         }
@@ -99,30 +207,27 @@ public:
 };
 
 int main() {
-    ios::sync_with_stdio(false);
-    cin.tie(nullptr);
-    
     int n;
-    cin >> n;
+    scanf("%d", &n);
     
     ElevatorSystem elevator;
-    string command;
+    char command[20];
     
     for (int i = 0; i < n; i++) {
-        cin >> command;
+        scanf("%s", command);
         
-        if (command == "action") {
+        if (command[0] == 'a' && command[1] == 'c') {  // action
             elevator.action();
-        } else if (command == "add") {
+        } else if (command[0] == 'a' && command[1] == 'd') {  // add
             int floor;
-            cin >> floor;
+            scanf("%d", &floor);
             elevator.add_request(floor);
-        } else if (command == "cancel") {
+        } else if (command[0] == 'c') {  // cancel
             int floor;
-            cin >> floor;
+            scanf("%d", &floor);
             elevator.cancel_request(floor);
-        } else if (command == "locate") {
-            cout << elevator.locate() << "\n";
+        } else if (command[0] == 'l') {  // locate
+            printf("%d\n", elevator.locate());
         }
     }
     
